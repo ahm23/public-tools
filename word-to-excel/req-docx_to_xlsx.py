@@ -127,7 +127,10 @@ def get_clean_text(paragraph):
 def convert_docx_to_xlsx(docx_path, xlsx_path):
     """Main conversion function."""
     doc = Document(docx_path)
-    num_patterns = get_numbering_patterns(doc.part.numbering_part)
+    try:
+        num_patterns = get_numbering_patterns(doc.part.numbering_part)
+    except Exception:
+        num_patterns = {}
     
     rows = []
     current_title = ""
@@ -213,12 +216,19 @@ if __name__ == '__main__':
         print(__doc__)
         sys.exit(1)
     
-    docx_path = sys.argv[1]
-    xlsx_path = sys.argv[2] if len(sys.argv) > 2 else docx_path.replace('.docx', '.xlsx')
-    
-    rows = convert_docx_to_xlsx(docx_path, xlsx_path)
+    try:
+        rows = convert_docx_to_xlsx(sys.argv[1],
+                   sys.argv[2] if len(sys.argv) > 2 else sys.argv[1].replace('.docx', '.xlsx'))
+    except ImportError as e:
+        print(f"Missing dependency: {e}")
+        print("Run: pip install python-docx openpyxl")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
     
     print("\nPreview:")
-    for i, (s, t, body) in enumerate(rows):
+    for i, (title, body) in enumerate(rows):
+        row_type = "Heading" if not body.strip() else "Requirement"
         bp = body[:80].replace('\n', '\\n')
-        print(f"  {i+1:2d}. [{s:15s}] {t:40s} | {bp}")
+        print(f"  {i+1:2d}. [{row_type:11s}] {title:40s} | {bp}")
