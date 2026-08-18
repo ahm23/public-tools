@@ -1,0 +1,62 @@
+{
+  "format": "requirements-explorer-spec",
+  "version": 1,
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "title": "Introduction"
+    },
+    {
+      "type": "item",
+      "kind": "comment",
+      "id": "",
+      "text": "This document defines the widget specification."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "title": "Functional Requirements"
+    },
+    {
+      "type": "item",
+      "kind": "requirement",
+      "id": "",
+      "text": "The system shall process orders within 24 hours."
+    },
+    {
+      "type": "item",
+      "kind": "requirement",
+      "id": "REQ1001",
+      "text": "The system shall validate addresses before shipping."
+    },
+    {
+      "type": "item",
+      "kind": "requirement",
+      "id": "REQ1002",
+      "text": ""
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "title": "Performance"
+    },
+    {
+      "type": "item",
+      "kind": "requirement",
+      "id": "REQ2001",
+      "text": "The system may batch up to 500 items per transaction.\nNote: batch size is configurable."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "title": "Non-functional"
+    },
+    {
+      "type": "item",
+      "kind": "requirement",
+      "id": "",
+      "text": "The system should log every state change."
+    }
+  ]
+}

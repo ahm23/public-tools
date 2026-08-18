@@ -1,0 +1,12 @@
+node_modules/
+build/
+dist/
+artifacts/
+*.tsbuildinfo
+
+# Python converter venv + bytecode
+converters/.venv/
+__pycache__/
+
+# Generated spec files
+spec.json
