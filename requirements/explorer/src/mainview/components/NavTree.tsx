@@ -113,10 +113,11 @@ function NodeRow({
 						{node.itemCount > 0 && <span className="badge">{node.itemCount}</span>}
 					</>
 				) : block.type === "item" && block.kind === "requirement" ? (
-					<>
-						{block.id && <span className="req-id">{block.id}</span>}
+					block.id ? (
+						<span className="req-id">{block.id}</span>
+					) : (
 						<span className="label">{itemLabel(block)}</span>
-					</>
+					)
 				) : (
 					<span className="label">{itemLabel(block)}</span>
 				)}

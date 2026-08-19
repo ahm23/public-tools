@@ -415,7 +415,7 @@ function IoModal({
 							<span className="io-title">Excel workbook (.xlsx)</span>
 							<span className="io-desc">
 								{mode === "import"
-									? "4-column spec sheet (Title, Type, External ID, Text). Heading levels are flattened."
+									? "4-column spec sheet (Title, Type, ID, Text). Heading levels are flattened."
 									: "Writes the same 4-column sheet produced by the legacy converter."}
 							</span>
 						</span>

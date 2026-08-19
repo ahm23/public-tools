@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Requirements specification converter — DOCX <-> JSON <-> XLSX.
 
@@ -18,7 +18,7 @@ Internal JSON format (the app's native format):
 
 Rules (mirroring the legacy req-docx_to_xlsx.py):
   * Title is only meaningful on heading rows — items have a blank title.
-  * An item is a "requirement" when it carries an external ID token
+  * An item is a "requirement" when it carries an ID token
     ([AAAA####]) or its text contains shall/should/may; otherwise "comment".
   * Heading nesting levels survive in DOCX and JSON; XLSX flattens them
     (the XLSX format has no level column).
@@ -238,7 +238,7 @@ def json2docx(input_path: Path, output_path: Path) -> dict:
 # XLSX <-> JSON
 # --------------------------------------------------------------------------- #
 
-XLSX_HEADERS = ["Title", "Type", "External ID", "Text"]
+XLSX_HEADERS = ["Title", "Type", "ID", "Text"]
 
 
 def xlsx2json(input_path: Path, output_path: Path) -> dict:

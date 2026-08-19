@@ -9,7 +9,7 @@ Python converters spawned over a JSON-over-files protocol.
 
 ## What it does
 
-- View a specification as a table: `Title | Type | External ID | Text`
+- View a specification as a table: `Title | Type | ID | Text`
 - Left navigation pane: heading tree (Word Heading 1–9 levels) with collapsible
   elements and per-section item counts
 - Double-click any cell to edit: heading titles, requirement IDs, and text
@@ -29,7 +29,7 @@ A spec is an ordered list of blocks:
 Rules (matching `../docx-xlsx-converter/req-docx_to_xlsx.py`):
 
 - Title is only meaningful on heading rows — items have a blank title.
-- An item is a `requirement` when it has an external ID or its text contains
+- An item is a `requirement` when it has an ID or its text contains
   *shall / should / may*; otherwise `comment`.
 - Heading levels survive DOCX ↔ JSON round-trips; XLSX flattens them (the
   4-column sheet has no level column).
@@ -44,7 +44,7 @@ plus GTK3 / WebKitGTK 4.1 runtime libs.
 npm install
 
 # one-time: create the Python converter venv
-python3 -m venv converters/.venv
+python -m venv converters/.venv
 converters/.venv/bin/pip install -r converters/requirements.txt
 
 # dev (no HMR)

@@ -22,7 +22,7 @@ const inElectrobun =
 let requestProxy: RequestProxy;
 
 if (inElectrobun) {
-	const rpc = Electroview.defineRPC<AppRPCSchema>({
+	const rpc = Electroview.defineRPC<AppRPCSchema>({ maxRequestTime: 120_000,
 		handlers: { requests: {} },
 	});
 	new Electroview({ rpc });

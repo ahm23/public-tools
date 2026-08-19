@@ -48,7 +48,7 @@ const projectRoot = findProjectRoot();
 const convertersDir = join(projectRoot, "converters");
 const converterScript = join(convertersDir, "req_convert.py");
 const venvPython = join(convertersDir, ".venv", "bin", "python");
-const pythonBin = existsSync(venvPython) ? venvPython : "python3";
+const pythonBin = existsSync(venvPython) ? venvPython : "python";
 const defaultSpecPath = join(projectRoot, "spec.json");
 
 // ---------------------------------------------------------------------------

@@ -124,11 +124,23 @@ body {
 }
 
 .tree-row .chevron {
-	width: 14px;
+	width: 20px;
+	height: 20px;
 	flex: 0 0 auto;
-	color: var(--text-dim);
-	font-size: 10px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text);
+	font-size: 12px;
 	text-align: center;
+	cursor: pointer;
+	border-radius: 4px;
+	user-select: none;
+}
+
+.tree-row .chevron:hover {
+	background: var(--bg-active);
+	color: var(--accent);
 }
 
 .tree-row .chevron.placeholder {
@@ -213,9 +225,19 @@ table.spec td.col-id {
 	width: 1%;
 }
 
-table.spec td.col-type {
+table.spec th.col-section,
+table.spec td.col-section {
+	font-family: var(--mono);
+	font-size: 12px;
+	color: var(--text-dim);
 	white-space: nowrap;
 	width: 1%;
+}
+
+table.spec th.col-type,
+table.spec td.col-type {
+	white-space: nowrap;
+	width: 104px;
 }
 
 table.spec td.col-title {
@@ -234,13 +256,6 @@ table.spec tr.row-heading td {
 	font-weight: 600;
 }
 
-table.spec tr.row-heading td.col-title {
-	padding-left: calc(10px + var(--indent, 0px));
-}
-
-table.spec tr.row-item td.col-id {
-	padding-left: calc(10px + var(--indent, 0px));
-}
 
 table.spec tr.row-comment td.col-text {
 	color: var(--text-dim);

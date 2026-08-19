@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import type { SpecBlock } from "../../shared/rpcSchema";
 import { itemKind } from "../../shared/rpcSchema";
 import EditableCell from "./EditableCell";
@@ -14,19 +13,23 @@ interface SpecTableProps {
 	onDelete: (index: number) => void;
 }
 
-/** Per-block indentation depth (heading level minus one, items inherit current section). */
-function computeIndents(blocks: SpecBlock[]): number[] {
-	const indents: number[] = [];
-	let depth = 0;
+/** Section number per block: headings only ("1", "1.1", …); items get none. */
+function computeSections(blocks: SpecBlock[]): (string | null)[] {
+	const out: (string | null)[] = [];
+	const counters: number[] = [];
 	for (const b of blocks) {
 		if (b.type === "heading") {
-			depth = Math.max(0, b.level - 1);
-			indents.push(depth);
+			const level = b.level;
+			counters[level] = (counters[level] ?? 0) + 1;
+			for (let l = level + 1; l < counters.length; l++) counters[l] = 0;
+			const parts: number[] = [];
+			for (let l = 1; l <= level; l++) parts.push(counters[l] ?? 0);
+			out.push(parts.join("."));
 		} else {
-			indents.push(depth);
+			out.push(null);
 		}
 	}
-	return indents;
+	return out;
 }
 
 export default function SpecTable({
@@ -37,16 +40,17 @@ export default function SpecTable({
 	onAddBelow,
 	onDelete,
 }: SpecTableProps) {
-	const indents = computeIndents(blocks);
+	const sections = computeSections(blocks);
 
 	return (
 		<div className="table-wrap">
 			<table className="spec">
 				<thead>
 					<tr>
+						<th className="col-section">Section</th>
+						<th>ID</th>
 						<th>Title</th>
-						<th>Type</th>
-						<th>External ID</th>
+						<th className="col-type">Type</th>
 						<th>Text</th>
 						<th style={{ width: 60 }}></th>
 					</tr>
@@ -62,16 +66,26 @@ export default function SpecTable({
 							isComment ? "row-comment" : "",
 							selectedIndex === i ? "selected" : "",
 						].join(" ");
-						const indent = `${indents[i] * 14}px`;
 
 						return (
 							<tr
 								key={i}
 								id={`spec-row-${i}`}
 								className={rowClass}
-								style={{ "--indent": indent } as CSSProperties}
 								onClick={() => onSelect(i)}
 							>
+								<td className="col-section">{sections[i] ?? ""}</td>
+								<td className="col-id">
+									{block.type === "heading" ? (
+										<span className="placeholder-text">—</span>
+									) : (
+										<EditableCell
+											value={block.id}
+											placeholder=""
+											onCommit={(v) => onCommitEdit(i, "id", v)}
+										/>
+									)}
+								</td>
 								<td className="col-title">
 									{block.type === "heading" ? (
 										<EditableCell
@@ -91,17 +105,6 @@ export default function SpecTable({
 									>
 										{isHeading ? "Heading" : kind === "requirement" ? "Requirement" : "Comment"}
 									</span>
-								</td>
-								<td className="col-id">
-									{block.type === "heading" ? (
-										<span className="placeholder-text">—</span>
-									) : (
-										<EditableCell
-											value={block.id}
-											placeholder="REQ1234"
-											onCommit={(v) => onCommitEdit(i, "id", v)}
-										/>
-									)}
 								</td>
 								<td className="col-text">
 									{block.type === "heading" ? (
@@ -145,7 +148,7 @@ export default function SpecTable({
 					{blocks.length === 0 && (
 						<tr>
 							<td
-								colSpan={5}
+								colSpan={6}
 								style={{ padding: 24, color: "var(--text-dim)", textAlign: "center" }}
 							>
 								Empty specification. Import a DOCX/XLSX or add a heading to start.
