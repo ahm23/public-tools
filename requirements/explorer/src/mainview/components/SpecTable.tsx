@@ -396,6 +396,7 @@ export default function SpecTable({
 				{editingText && (
 					<RichTextEditor
 						initialHtml={editingText.html}
+						nodes={nodes}
 						onClose={() => setEditingText(null)}
 						onSave={(html) => {
 							onCommitEdit(editingText.id, "text", html);

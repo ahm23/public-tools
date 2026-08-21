@@ -1,14 +1,17 @@
 import {
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 	type MouseEvent as ReactMouseEvent,
 	type ReactNode,
 } from "react";
+import type { WcNode } from "../../shared/rpcSchema";
 import Modal from "./Modal";
 
 interface RichTextEditorProps {
 	initialHtml: string;
+	nodes: WcNode[];
 	onSave: (html: string) => void;
 	onClose: () => void;
 }
@@ -160,6 +163,7 @@ function splitCellAt(
  */
 export default function RichTextEditor({
 	initialHtml,
+	nodes,
 	onSave,
 	onClose,
 }: RichTextEditorProps) {
@@ -171,6 +175,9 @@ export default function RichTextEditor({
 	const [cellColor, setCellColorState] = useState(DEFAULT_BG);
 	const [borderColor, setBorderColorState] = useState(DEFAULT_BORDER_COLOR);
 	const [rawMode, setRawMode] = useState(false);
+	const [linkPickerOpen, setLinkPickerOpen] = useState(false);
+	const [linkFilter, setLinkFilter] = useState("");
+	const savedRangeRef = useRef<Range | null>(null);
 	const [cellSelection, setCellSelection] = useState<
 		Set<HTMLTableCellElement> | null
 	>(null);
@@ -179,14 +186,17 @@ export default function RichTextEditor({
 		bodyRef.current?.focus();
 	}, []);
 
-	// Escape cancels without saving
+	// Escape cancels without saving (or closes the link picker first)
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") onClose();
+			if (e.key !== "Escape") return;
+			e.preventDefault();
+			if (linkPickerOpen) closeLinkPicker();
+			else onClose();
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [onClose]);
+	}, [onClose, linkPickerOpen]);
 
 	// Keep the toolbars and color swatches in sync with the caret position.
 	useEffect(() => {
@@ -601,6 +611,62 @@ export default function RichTextEditor({
 		}
 	};
 
+	// ------------------------------------------------------------ item links
+
+	/** Flattened node list for the link picker, in document order. */
+	const flatNodes = useMemo(() => {
+		const out: { id: string; title: string; reqId: string; depth: number }[] = [];
+		const walk = (list: WcNode[], depth: number) => {
+			for (const n of list) {
+				out.push({ id: n.id, title: n.title, reqId: n.reqId, depth });
+				walk(n.children, depth + 1);
+			}
+		};
+		walk(nodes, 0);
+		return out;
+	}, [nodes]);
+
+	const openLinkPicker = () => {
+		const sel = window.getSelection();
+		if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+		savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+		setLinkFilter("");
+		setLinkPickerOpen(true);
+	};
+
+	const closeLinkPicker = () => {
+		setLinkPickerOpen(false);
+		savedRangeRef.current = null;
+	};
+
+	/** Wrap the saved selection in an item link, then close the picker. */
+	const applyItemLink = (itemId: string) => {
+		const range = savedRangeRef.current;
+		setLinkPickerOpen(false);
+		savedRangeRef.current = null;
+		if (!range) return;
+		bodyRef.current?.focus();
+		const sel = window.getSelection();
+		if (!sel) return;
+		sel.removeAllRanges();
+		sel.addRange(range);
+		document.execCommand(
+			"createLink",
+			false,
+			`mks:///item?itemid=${itemId}`,
+		);
+	};
+
+	const linkCandidates = flatNodes.filter((n) => {
+		const q = linkFilter.trim().toLowerCase();
+		if (!q) return true;
+		return (
+			n.id.toLowerCase().includes(q) ||
+			n.title.toLowerCase().includes(q) ||
+			n.reqId.toLowerCase().includes(q)
+		);
+	});
+
 	// ---------------------------------------------------------------- toolbar
 
 	const tool = (label: ReactNode, title: string, fn: () => void) => (
@@ -638,6 +704,7 @@ export default function RichTextEditor({
 						{tool("1. List", "Numbered list", () => exec("insertOrderedList"))}
 						{tool("H1", "Heading 1", () => exec("formatBlock", "h3"))}
 						{tool("¶", "Paragraph", () => exec("formatBlock", "p"))}
+						{tool("⛓ Item link", "Link selected text to an item", openLinkPicker)}
 						{tool("⊞ Table", "Insert 2×2 table", insertTable)}
 						<span className="rte-sep"></span>
 						<span className="rte-label">Text</span>
@@ -708,6 +775,44 @@ export default function RichTextEditor({
 					Save
 				</button>
 			</div>
+			{linkPickerOpen && (
+				<Modal
+					title="Link to item"
+					onClose={closeLinkPicker}
+					className="rte-link-modal"
+				>
+					<div className="rte-link-search">
+						<input
+							type="text"
+							autoFocus
+							placeholder="Search nodes…"
+							value={linkFilter}
+							onChange={(e) => setLinkFilter(e.target.value)}
+						/>
+					</div>
+					<div className="rte-link-list">
+						{linkCandidates.map((n) => (
+							<button
+								key={n.id}
+								type="button"
+								className="rte-link-item"
+								style={{ paddingLeft: 10 + n.depth * 14 }}
+								onClick={() => applyItemLink(n.id)}
+							>
+								<span className="rte-link-id">{n.id}</span>
+								<span className="rte-link-title">
+									{n.title || "(untitled)"}
+								</span>
+							</button>
+						))}
+						{linkCandidates.length === 0 && (
+							<div className="rte-link-empty">
+								No matching nodes
+							</div>
+						)}
+					</div>
+				</Modal>
+			)}
 		</Modal>
 	);
 
