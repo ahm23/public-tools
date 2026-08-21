@@ -2,12 +2,10 @@ import {
 	useEffect,
 	useRef,
 	useState,
-	type ClipboardEvent as ReactClipboardEvent,
 	type MouseEvent as ReactMouseEvent,
 	type ReactNode,
 } from "react";
 import Modal from "./Modal";
-import { normalizeWordPaste } from "../wordPaste";
 
 interface RichTextEditorProps {
 	initialHtml: string;
@@ -241,25 +239,6 @@ export default function RichTextEditor({
 	const exec = (command: string, value?: string) => {
 		bodyRef.current?.focus();
 		document.execCommand(command, false, value);
-	};
-
-	/** Intercept Word pastes and rebuild mso-list paragraphs as real <ul>/<ol>. */
-	const handlePaste = (e: ReactClipboardEvent<HTMLDivElement>) => {
-		const html = e.clipboardData.getData("text/html");
-		// Only Word HTML carries mso-* markers; other pastes keep the default path.
-		if (!html || !/mso-|Mso(List|Normal)|<!--\[if/.test(html)) return;
-		e.preventDefault();
-		const cleaned = normalizeWordPaste(html).trim();
-		bodyRef.current?.focus();
-		if (cleaned) {
-			document.execCommand("insertHTML", false, cleaned);
-		} else {
-			document.execCommand(
-				"insertText",
-				false,
-				e.clipboardData.getData("text/plain"),
-			);
-		}
 	};
 
 	const currentCell = (): HTMLTableCellElement | null => {
@@ -701,7 +680,6 @@ export default function RichTextEditor({
 				suppressContentEditableWarning
 				data-placeholder="Text…"
 				dangerouslySetInnerHTML={{ __html: initialHtml }}
-				onPaste={handlePaste}
 				onMouseDown={handleBodyMouseDown}
 				onKeyDown={(e) => {
 					if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
