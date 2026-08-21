@@ -5,12 +5,16 @@ interface ModalProps {
 	onClose: () => void;
 	children: ReactNode;
 	footer?: ReactNode;
+	className?: string;
 }
 
-export default function Modal({ title, onClose, children, footer }: ModalProps) {
+export default function Modal({ title, onClose, children, footer, className }: ModalProps) {
 	return (
 		<div className="modal-overlay" onMouseDown={onClose}>
-			<div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+			<div
+				className={`modal${className ? ` ${className}` : ""}`}
+				onMouseDown={(e) => e.stopPropagation()}
+			>
 				<header>
 					<span>{title}</span>
 					<button className="close" onClick={onClose} aria-label="close">

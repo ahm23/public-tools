@@ -1,19 +1,23 @@
 /**
- * Requirements Explorer — main process (Electrobun / Bun).
+ * Windchill RV&S Editor — main process (Electrobun / Bun).
  *
  * Responsibilities:
  *   - Create the main window
  *   - Serve RPC requests from the renderer: load/save the spec JSON,
- *     import/export DOCX and XLSX by spawning the Python converters in
- *     converters/ (JSON-over-files protocol), and native dialogs.
+ *     import from Windchill RV&S (see ./windchill.ts), and native dialogs.
  */
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AppRPCSchema, SpecDoc, SpecState } from "../shared/rpcSchema";
-import { emptySpec, SPEC_FORMAT, SPEC_VERSION } from "../shared/rpcSchema";
+import type {
+	AppRPCSchema,
+	SpecDoc,
+	SpecState,
+	WcEditPayload,
+} from "../shared/rpcSchema";
+import { emptySpec } from "../shared/rpcSchema";
+import { fetchWindchillItems, windchillToSpec } from "./windchill";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -25,75 +29,24 @@ const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 const srcDir = dirname(fileURLToPath(import.meta.url)); // <root>/src/bun (dev) or <app>/Resources (bundled)
 
 /**
- * Locate the project root that contains converters/req_convert.py.
+ * Locate the project root (the directory that holds wc-data.json).
  * In dev the main process is bundled under build/dev-<platform>/<app>/Resources,
  * so walk up from there until the source tree is found.
  */
 function findProjectRoot(): string {
-	if (process.env.REQ_EXPLORER_ROOT) return process.env.REQ_EXPLORER_ROOT;
+	if (process.env.WINDCHILL_EDITOR_ROOT) return process.env.WINDCHILL_EDITOR_ROOT;
 	let dir = srcDir;
 	for (let i = 0; i < 8; i++) {
-		if (existsSync(join(dir, "converters", "req_convert.py"))) return dir;
+		if (existsSync(join(dir, "wc-data.json"))) return dir;
 		const parent = dirname(dir);
 		if (parent === dir) break;
 		dir = parent;
-	}
-	if (existsSync(join(process.cwd(), "converters", "req_convert.py"))) {
-		return process.cwd();
 	}
 	return srcDir;
 }
 
 const projectRoot = findProjectRoot();
-const convertersDir = join(projectRoot, "converters");
-const converterScript = join(convertersDir, "req_convert.py");
-const venvPython = join(convertersDir, ".venv", "bin", "python");
-const pythonBin = existsSync(venvPython) ? venvPython : "python";
 const defaultSpecPath = join(projectRoot, "spec.json");
-
-// ---------------------------------------------------------------------------
-// Converter spawn (JSON over files)
-// ---------------------------------------------------------------------------
-
-interface ConverterOutcome {
-	ok: boolean;
-	output?: string;
-	error?: string;
-}
-
-async function runConverter(
-	subcommand: string,
-	args: string[],
-): Promise<ConverterOutcome> {
-	const proc = Bun.spawn({
-		cmd: [pythonBin, converterScript, subcommand, ...args],
-		cwd: convertersDir,
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-
-	const [stdout, stderr] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
-	const exit = await proc.exited;
-
-	if (exit !== 0) {
-		const detail = stderr.trim() || stdout.trim() || `exit code ${exit}`;
-		return { ok: false, error: `converter failed: ${detail}` };
-	}
-	try {
-		const result = JSON.parse(stdout.trim().split("\n").pop() ?? "{}");
-		if (result?.ok === false) return { ok: false, error: result.error ?? "conversion failed" };
-		return { ok: true, output: result?.output };
-	} catch {
-		return { ok: false, error: `converter returned invalid JSON: ${stdout.slice(0, 200)}` };
-	}
-}
-
-function tempJsonPath(prefix: string): string {
-	return join(tmpdir(), `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}.json`);
-}
 
 // ---------------------------------------------------------------------------
 // Spec file I/O
@@ -108,13 +61,9 @@ function readSpecFile(path: string): SpecDoc {
 	} catch {
 		throw new Error(`not valid JSON: ${path}`);
 	}
-	const d = data as { blocks?: unknown };
-	if (
-		typeof data !== "object" ||
-		data === null ||
-		!Array.isArray(d.blocks)
-	) {
-		throw new Error(`not a requirements-explorer spec file: ${path}`);
+	const d = data as { nodes?: unknown };
+	if (typeof data !== "object" || data === null || !Array.isArray(d.nodes)) {
+		throw new Error(`not a windchill-editor spec file: ${path}`);
 	}
 	return data as SpecDoc;
 }
@@ -132,7 +81,10 @@ async function handleLoad(path: string): Promise<SpecState> {
 	return { path, spec: readSpecFile(path) };
 }
 
-async function handleSave(path: string, spec: SpecDoc): Promise<{ ok: boolean; path?: string; error?: string }> {
+async function handleSave(
+	path: string,
+	spec: SpecDoc,
+): Promise<{ ok: boolean; path?: string; error?: string }> {
 	try {
 		writeSpecFile(path, spec);
 		return { ok: true, path };
@@ -141,37 +93,60 @@ async function handleSave(path: string, spec: SpecDoc): Promise<{ ok: boolean; p
 	}
 }
 
-async function handleImport(
-	format: "docx" | "xlsx",
-	path: string,
-): Promise<{ ok: boolean; spec?: SpecDoc; error?: string; output?: string }> {
-	const subcommand = format === "docx" ? "docx2json" : "xlsx2json";
-	const tmp = tempJsonPath("req_import");
-	const outcome = await runConverter(subcommand, [path, tmp]);
-	if (!outcome.ok) return outcome;
-
+async function handleImportWindchill(documentId: string) {
 	try {
-		const spec = readSpecFile(tmp);
-		return { ok: true, spec, output: outcome.output };
+		const items = await fetchWindchillItems(documentId);
+		const spec = windchillToSpec(items, documentId);
+		return { ok: true, spec, output: `${items.length} items` };
 	} catch (e) {
 		return { ok: false, error: e instanceof Error ? e.message : String(e) };
-	} finally {
-		rmSync(tmp, { force: true });
 	}
 }
 
-async function handleExport(
-	format: "docx" | "xlsx",
-	path: string,
-	spec: SpecDoc,
-): Promise<{ ok: boolean; error?: string; output?: string }> {
-	const tmp = tempJsonPath("req_export");
-	writeSpecFile(tmp, spec);
+// ---------------------------------------------------------------------------
+// Edit sync — POST every spec edit to the local edit endpoint
+// ---------------------------------------------------------------------------
+
+const EDIT_ENDPOINT = process.env.WINDCHILL_EDIT_URL ?? "http://localhost:7001";
+
+/**
+ * POST an edit payload (built by the renderer, shape from wc-req-edit.json)
+ * to the local Windchill edit endpoint with Basic auth. Runs in the main
+ * process so the webview's CORS never comes into play.
+ */
+async function handleEditEvent(
+	payload: WcEditPayload,
+): Promise<{ ok: boolean; error?: string }> {
 	try {
-		const subcommand = format === "docx" ? "json2docx" : "json2xlsx";
-		return await runConverter(subcommand, [tmp, path]);
-	} finally {
-		rmSync(tmp, { force: true });
+		const user = process.env.WINDCHILL_API_USER ?? "";
+		const pass = process.env.WINDCHILL_API_PASS ?? "";
+		const headers: Record<string, string> = {
+			"Content-Type": "application/json",
+		};
+		if (user || pass) {
+			headers.Authorization = `Basic ${Buffer.from(
+				`${user}:${pass}`,
+			).toString("base64")}`;
+		} else {
+			console.warn(
+				"[editEvent] WINDCHILL_API_USER/PASS not set; sending without Authorization",
+			);
+		}
+		const res = await fetch(EDIT_ENDPOINT, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(payload),
+		});
+		if (!res.ok) {
+			const body = await res.text().catch(() => "");
+			return {
+				ok: false,
+				error: `HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
+			};
+		}
+		return { ok: true };
+	} catch (e) {
+		return { ok: false, error: e instanceof Error ? e.message : String(e) };
 	}
 }
 
@@ -182,7 +157,7 @@ async function pickPath(opts: {
 	canChooseDirectory?: boolean;
 }): Promise<{ path: string | null }> {
 	const picked = await Utils.openFileDialog({
-		startingFolder: opts.startingFolder ?? "~",
+		startingFolder: opts.startingFolder ?? "~/",
 		allowedFileTypes: opts.filter ?? "*",
 		canChooseFiles: opts.canChooseFiles ?? true,
 		canChooseDirectory: opts.canChooseDirectory ?? false,
@@ -233,14 +208,15 @@ async function getMainViewUrl(): Promise<string> {
 }
 
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
-	maxRequestTime: 120_000, // conversions can take a few seconds
+	maxRequestTime: 120_000,
 	handlers: {
 		requests: {
+			"spec:new": () => ({ path: "", spec: emptySpec() }),
 			"spec:load": ({ path }) => handleLoad(path),
 			"spec:save": ({ path, spec }) => handleSave(path, spec),
-			"spec:new": () => ({ path: "", spec: emptySpec() }),
-			"spec:import": ({ format, path }) => handleImport(format, path),
-			"spec:export": ({ format, path, spec }) => handleExport(format, path, spec),
+			"spec:importWindchill": ({ documentId }) =>
+				handleImportWindchill(documentId),
+			"spec:editEvent": ({ payload }) => handleEditEvent(payload),
 			"dialog:pickOpen": ({ filter }) =>
 				pickPath({ filter, canChooseFiles: true, canChooseDirectory: false }),
 			"dialog:pickSave": async ({ filter }) => {
@@ -259,7 +235,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 const url = await getMainViewUrl();
 
 new BrowserWindow({
-	title: "Requirements Explorer",
+	title: "Windchill RV&S Editor",
 	url,
 	frame: {
 		width: 1280,
@@ -271,17 +247,17 @@ new BrowserWindow({
 });
 
 // Seed a default spec file on first run so "open" has something to find.
+// Re-seed if a stale (old-format) file is present.
 if (!existsSync(defaultSpecPath)) {
+	writeSpecFile(defaultSpecPath, emptySpec());
+	console.log(`Created default spec at ${defaultSpecPath}`);
+} else {
 	try {
-		writeSpecFile(defaultSpecPath, {
-			format: SPEC_FORMAT,
-			version: SPEC_VERSION,
-			blocks: [],
-		});
-		console.log(`Created default spec at ${defaultSpecPath}`);
-	} catch (e) {
-		console.error("Failed to seed default spec:", e);
+		readSpecFile(defaultSpecPath);
+	} catch {
+		writeSpecFile(defaultSpecPath, emptySpec());
+		console.log(`Re-seeded stale spec at ${defaultSpecPath}`);
 	}
 }
 
-console.log(`Requirements Explorer started (root: ${projectRoot}, converter: ${pythonBin})`);
+console.log(`Windchill RV&S Editor started (root: ${projectRoot})`);

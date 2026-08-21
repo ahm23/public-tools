@@ -84,8 +84,8 @@ export default function EditableCell({
 	return (
 		<div
 			className={`cell ${className ?? ""}`}
-			onDoubleClick={begin}
-			title="double-click to edit"
+			onClick={begin}
+			title="click to edit"
 		>
 			{value || <span className="placeholder-text">{placeholder ?? ""}</span>}
 		</div>

@@ -22,14 +22,18 @@ const inElectrobun =
 let requestProxy: RequestProxy;
 
 if (inElectrobun) {
-	const rpc = Electroview.defineRPC<AppRPCSchema>({ maxRequestTime: 120_000,
+	// The default RPC request timeout is 1s; raise it so native file dialogs
+	// (which stay open while the user browses) and slow imports don't get
+	// killed with "RPC request timed out.".
+	const rpc = Electroview.defineRPC<AppRPCSchema>({
+		maxRequestTime: 120_000,
 		handlers: { requests: {} },
 	});
 	new Electroview({ rpc });
 	requestProxy = rpc.request as unknown as RequestProxy;
 } else {
 	console.warn(
-		"[requirements-explorer] not running inside Electrobun; using in-memory IPC fallback",
+		"[windchill-editor] not running inside Electrobun; using in-memory IPC fallback",
 	);
 	requestProxy = createFallbackProxy();
 }
@@ -46,10 +50,10 @@ function createFallbackProxy(): RequestProxy {
 
 	const store = (() => {
 		try {
-			const raw = localStorage.getItem("req-explorer-spec");
+			const raw = localStorage.getItem("wc-editor-spec");
 			if (raw) {
 				const parsed = JSON.parse(raw) as SpecDoc;
-				if (Array.isArray(parsed.blocks)) return parsed;
+				if (Array.isArray(parsed.nodes)) return parsed;
 			}
 		} catch {
 			/* ignore */
@@ -60,13 +64,19 @@ function createFallbackProxy(): RequestProxy {
 
 	const persist = () => {
 		try {
-			localStorage.setItem("req-explorer-spec", JSON.stringify(spec));
+			localStorage.setItem("wc-editor-spec", JSON.stringify(spec));
 		} catch {
 			/* ignore */
 		}
 	};
 
 	return {
+		"spec:new": async () => {
+			spec = emptySpec();
+			path = "";
+			persist();
+			return { path, spec };
+		},
 		"spec:load": async ({ path: p }) => {
 			path = p;
 			persist();
@@ -77,23 +87,16 @@ function createFallbackProxy(): RequestProxy {
 			persist();
 			return { ok: true, path: path || "localStorage" };
 		},
-		"spec:new": async () => {
-			spec = emptySpec();
-			path = "";
-			persist();
-			return { path, spec };
-		},
-		"spec:import": async ({ path: p, format }) => {
-			path = p;
-			persist();
-			return { ok: true, spec, output: `(fallback) ${format}` };
-		},
-		"spec:export": async ({ path: p, format }) => {
-			persist();
-			return { ok: true, output: `(fallback) ${p} [${format}]` };
-		},
+		"spec:importWindchill": async () => ({
+			ok: false,
+			error: "Windchill import requires the desktop app",
+		}),
 		"dialog:pickOpen": async () => ({ path: null }),
 		"dialog:pickSave": async () => ({ path: null }),
 		"dialog:confirm": async () => ({ confirmed: true }),
+		"spec:editEvent": async ({ payload }) => {
+			console.log("[editEvent] (browser fallback)", JSON.stringify(payload));
+			return { ok: true };
+		},
 	};
 }
